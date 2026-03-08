@@ -105,6 +105,9 @@ type
     ## Function types for the plugin's entry points. These functions will be called
     ## by the plugin manager when unloading the plugin. The deinit function is called to
     ## perform any necessary cleanup before the plugin is removed from the system.
+  plugin_event_fn* = proc() {.cdecl.}
+    ## Function type for plugin event handlers, which can be called by the plugin manager
+    ## to trigger specific events in the plugin's lifecycle, such as onload, onunload, and oninit.
 
   Plugin* {.inheritable.} = ref object
     ## The structure representing a plugin.
@@ -141,6 +144,7 @@ type
     deinitFn: plugin_deinit_fn
       # The function pointer to the plugin's deinitialization function, which will be called
       # when the plugin is unloaded to perform any necessary cleanup.
+    
 
 #
 # Utilities
@@ -226,6 +230,31 @@ when compileOption("app", "lib"):
       else:
         error("Unknown field in plugin config: " & $field[0])
     
+    # parse the `init` and try retrieve the `onload`, `onunload`, and `oninit` blocks from it
+    expectKind(init, nnkStmtList)
+    var onloadBlock, onunloadBlock, oninitBlock: NimNode
+    for blk in init:
+      if blk[0].strVal in ["onload", "onLoad", "on_load"]:
+        onloadBlock = 
+          newProc(
+            ident"plugin_event_load",
+            body = blk[1]
+          )
+      elif blk[0].strVal in ["onunload", "onUnLoad", "on_unload"]:
+        onunloadBlock = 
+          newProc(
+            ident"plugin_event_unload",
+            body = blk[1]
+          )
+      elif blk[0].strVal in ["oninit", "onInit", "on_init"]:
+        oninitBlock =
+          newProc(
+            ident"plugin_event_init",
+            body = blk[1]
+          )
+      else:
+        error("Unknown block in plugin init: " & $blk[0])
+
     result = newStmtList()
     add result, quote do:
       var gManifest {.inject.} = PluginManifest(
@@ -242,7 +271,7 @@ when compileOption("app", "lib"):
       proc NimMain {.cdecl, importc.}
       
       {.push exportc, cdecl, dynlib.}
-      proc plugin_get_manifest*(outManifest: ptr PluginManifest): cint {.cdecl, exportc, dynlib.} =
+      proc plugin_get_manifest*(outManifest: ptr PluginManifest): cint =
         ## This function is called by the plugin manager to retrieve the
         ## plugin's manifest information. The plugin should fill the provided
         ## PluginManifest structure with its metadata and permissions information.
@@ -251,19 +280,26 @@ when compileOption("app", "lib"):
         outManifest[] = gManifest
         return 0
 
-      proc plugin_init*(): cint {.cdecl, exportc, dynlib.} =
+      proc plugin_init*(): cint =
         ## Perform any necessary initialization when the plugin is loaded.
         ## This can include setting up resources, initializing state,
         ## or other setup tasks specific to the plugin's functionality
         NimMain() # important for Nim runtime in dynamic lib
         return 0
 
-      proc plugin_deinit*() {.cdecl, exportc, dynlib.} =
+      `onloadBlock`
+      `oninitBlock`
+      `onunloadBlock`
+
+      proc plugin_deinit*() =
         ## Perform any necessary cleanup when the plugin is unloaded. This can include
         ## freeing resources, closing connections, or other cleanup tasks
         ## specific to the plugin's functionality
         GC_FullCollect()
       {.pop.}
+    
+    when defined(pluginKitDebug):
+      echo result.repr
 else:
   #
   # API for PluginManager and Plugin structures
@@ -274,11 +310,11 @@ else:
       ## registered with the PluginManager. These callbacks allow plugins to
       ## respond to various events in the plugin lifecycle, such as when a plugin
       ## is loaded, unloaded, or when an error occurs.
-      onPluginLoaded*: proc (plugin: Plugin)
+      onLoad*: proc (plugin: Plugin)
         ## Callback that is called when a plugin is successfully loaded.
-      onPluginUnloaded*: proc (plugin: Plugin)
+      onUnload*: proc (plugin: Plugin)
         ## Callback that is called when a plugin is successfully unloaded.
-      onPluginError*: proc (plugin: Plugin, error: string)
+      onError*: proc (plugin: Plugin, error: string)
         ## Callback that is called when an error occurs during plugin loading or unloading.
 
     PluginManager* = ref object
@@ -291,6 +327,8 @@ else:
         # A table mapping their unique hashed identifiers to their names,
         # allowing for quick lookup and management of plugins.
       callbacks*: PluginManagerCallbacks
+        ## The callbacks registered with the PluginManager, allowing it to notify plugins
+        ## of lifecycle events such as loading, unloading, and errors.
 
     PluginManagerError* = object of CatchableError
 
@@ -312,9 +350,8 @@ else:
     if manager.pluginIdentifiers.contains(id):
       manager.pluginIdentifiers.del(id)
 
-    if manager.callbacks.onPluginUnloaded != nil:
-      manager.callbacks.onPluginUnloaded(plugin)
-
+    if manager.callbacks.onUnload != nil:
+      manager.callbacks.onUnload(plugin)
 
   proc loadPlugin(manager: PluginManager, plugin: Plugin) =
     # Loads a plugin into the system. This procedure will add the plugin to the
@@ -322,8 +359,12 @@ else:
       raise newException(PluginManagerError, "Plugin already loaded: " & plugin.name)
     manager.plugins[plugin.id] = plugin
     manager.pluginIdentifiers[plugin.id] = plugin.name
-    if manager.callbacks.onPluginLoaded != nil:
-      manager.callbacks.onPluginLoaded(plugin)
+    
+    let eventLoadFn = cast[plugin_event_fn](plugin.libHandle.symAddr("plugin_event_load"))
+    if eventLoadFn != nil: eventLoadFn()
+
+    if manager.callbacks.onLoad != nil:
+      manager.callbacks.onLoad(plugin)
 
   proc load*(manager: PluginManager, path: string): NanoID =
     ## Loads a plugin from the specified path. This procedure will attempt to
@@ -403,10 +444,12 @@ else:
     if rc != 0:
       # If initialization fails, we should unload the plugin and mark it as invalid
       plugin.status = pluginStatusInvalid
-      if manager.callbacks.onPluginError != nil:
-        manager.callbacks.onPluginError(plugin, "plugin_init failed with code " & $rc)
+      if manager.callbacks.onError != nil:
+        manager.callbacks.onError(plugin, "plugin_init failed with code " & $rc)
       raise newException(PluginManagerError, "Failed to activate plugin: " & plugin.name)
     plugin.status = pluginStatusActive
+    let eventInitFn = cast[plugin_event_fn](plugin.libHandle.symAddr("plugin_event_init"))
+    if eventInitFn != nil: eventInitFn()
 
   #
   # Plugin public API
