@@ -228,7 +228,6 @@ when compileOption("app", "lib"):
     
     result = newStmtList()
     add result, quote do:
-      echo `permissionsExpr`
       var gManifest {.inject.} = PluginManifest(
         abiVersion: PluginAbiVersion,
         name: cstring(`name`),
@@ -295,13 +294,12 @@ else:
 
     PluginManagerError* = object of CatchableError
 
-  proc unload*(manager: PluginManager, name: string) =
-    ## Loads a plugin into the system. This procedure will add the plugin to the
-    ## manager's registry and perform any necessary initialization.
-    if not manager.plugins.contains(name):
-      return
+  proc unload*(manager: PluginManager, id: string) =
+    ## Unloads a plugin by its unique id.
+    if not manager.plugins.contains(id):
+      raise newException(PluginManagerError, "Plugin not loaded: " & id)
 
-    let plugin = manager.plugins[name]
+    let plugin = manager.plugins[id]
 
     if plugin.deinitFn != nil:
       plugin.deinitFn()
@@ -310,12 +308,13 @@ else:
       unloadLib(plugin.libHandle)
 
     plugin.status = pluginStatusUnload
-    manager.plugins.del(name)
-    if manager.pluginIdentifiers.contains(plugin.id):
-      manager.pluginIdentifiers.del(plugin.id)
+    manager.plugins.del(id)
+    if manager.pluginIdentifiers.contains(id):
+      manager.pluginIdentifiers.del(id)
 
     if manager.callbacks.onPluginUnloaded != nil:
       manager.callbacks.onPluginUnloaded(plugin)
+
 
   proc loadPlugin(manager: PluginManager, plugin: Plugin) =
     # Loads a plugin into the system. This procedure will add the plugin to the
@@ -393,21 +392,20 @@ else:
     ## Activates a plugin by its unique identifier. This procedure will check
     ## if the plugin is loaded and then call its initialization function to
     ## make it active within the system
-    if not manager.pluginIdentifiers.contains(id):
+    if not manager.plugins.contains(id):
       raise newException(PluginManagerError, "Plugin not found: " & id)
-    
-    let pluginName = manager.pluginIdentifiers[id]
-    let plugin = manager.plugins[pluginName]
+
+    let plugin = manager.plugins[id]
     if plugin.initFn.isNil:
-      raise newException(PluginManagerError, "plugin_init symbol is nil for: " & pluginName)
+      raise newException(PluginManagerError, "plugin_init symbol is nil for: " & plugin.name)
 
     let rc = plugin.initFn()
     if rc != 0:
+      # If initialization fails, we should unload the plugin and mark it as invalid
       plugin.status = pluginStatusInvalid
       if manager.callbacks.onPluginError != nil:
         manager.callbacks.onPluginError(plugin, "plugin_init failed with code " & $rc)
-      raise newException(PluginManagerError, "Failed to activate plugin: " & pluginName)
-
+      raise newException(PluginManagerError, "Failed to activate plugin: " & plugin.name)
     plugin.status = pluginStatusActive
 
   #
