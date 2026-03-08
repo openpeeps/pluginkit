@@ -13,11 +13,11 @@
 
 ## 😍 Key Features
 
-- **Dynamic Plugin Loading** - Load plugins at runtime from dynamic libraries (`.so`, `.dll`, `.dylib`) using Nim’s `std/dynlib`
-- **Stable Plugin ABI** - Plugins communicate with the host via a versioned, C-compatible manifest structure and exported entry points (`plugin_get_manifest`, `plugin_init`, `plugin_deinit`)
+- **Dynamic Plugin Loading** - Dynamic libraries (`.so`, `.dll`, `.dylib`) using Nim’s `std/dynlib`
+- **Stable Plugin ABI** - C-compatible manifest structure and exported entry points (`plugin_get_manifest`, `plugin_init`, `plugin_deinit`)
 - **Plugin Metadata & Manifest**, including name, version, author, description, license, URL, and permissions
 - **Plugin Lifecycle Management** with `onload` and `onunload` callbacks for initialization and cleanup
-- Permission System
+- Permission System to control plugin capabilities and API access
 - Macro-based Plugin Definition
 - Semantic Versioning Support  
 - **Callbacks & Extensible Manager**
