@@ -298,7 +298,7 @@ when compileOption("app", "lib"):
         GC_FullCollect()
       {.pop.}
     
-    when defined(pluginKitDebug):
+    when defined(pluginkitDebug):
       echo result.repr
 else:
   #
@@ -317,6 +317,23 @@ else:
       onError*: proc (plugin: Plugin, error: string)
         ## Callback that is called when an error occurs during plugin loading or unloading.
 
+    PluginLoadPolicy* = object
+      ## The PluginLoadPolicy structure defines the policies and rules
+      ## for loading plugins into the system.
+      trustedDirs*: seq[string]
+        ## A sequence of trusted directories from which plugins can be loaded. This allows
+        ## the plugin manager to restrict plugin loading to specific locations on the filesystem,
+        ## enhancing security by preventing unauthorized plugins from being loaded.
+      requireSignature*: bool
+        ## A flag indicating whether plugins must be signed with a valid signature to be loaded. This adds
+        ## an additional layer of security by ensuring that only plugins from trusted sources can be loaded.
+      verifySignature*: proc(path: string): bool {.gcsafe.}
+        ## A procedure for verifying the signature of a plugin
+      allowedHashes*: Table[string, string] # absPath -> sha256/sha1 (prefer sha256)
+        ## A table mapping the absolute paths of plugins to their expected hashes
+      allowInProcess*: bool
+        ## A flag indicating whether in-process plugins are allowed.
+
     PluginManager* = ref object
       ## The PluginManager is responsible for managing the lifecycle of plugins,
       ## including loading, unloading, and executing plugins. It maintains a registry
@@ -329,10 +346,13 @@ else:
       callbacks*: PluginManagerCallbacks
         ## The callbacks registered with the PluginManager, allowing it to notify plugins
         ## of lifecycle events such as loading, unloading, and errors.
+      policy*: PluginLoadPolicy
+        ## The policy for loading plugins, which defines rules and restrictions
+        ## for plugin loading to enhance security and control over the plugin ecosystem.
 
     PluginManagerError* = object of CatchableError
 
-  proc unload*(manager: PluginManager, id: string) =
+  proc unload*(manager: PluginManager|ptr PluginManager, id: string) =
     ## Unloads a plugin by its unique id.
     if not manager.plugins.contains(id):
       raise newException(PluginManagerError, "Plugin not loaded: " & id)
@@ -353,7 +373,7 @@ else:
     if manager.callbacks.onUnload != nil:
       manager.callbacks.onUnload(plugin)
 
-  proc loadPlugin(manager: PluginManager, plugin: Plugin) =
+  proc loadPlugin(manager: PluginManager|ptr PluginManager, plugin: Plugin) =
     # Loads a plugin into the system. This procedure will add the plugin to the
     if manager.plugins.contains(plugin.id):
       raise newException(PluginManagerError, "Plugin already loaded: " & plugin.name)
@@ -366,7 +386,7 @@ else:
     if manager.callbacks.onLoad != nil:
       manager.callbacks.onLoad(plugin)
 
-  proc load*(manager: PluginManager, path: string): NanoID =
+  proc load*(manager: PluginManager|ptr PluginManager, path: string): NanoID =
     ## Loads a plugin from the specified path. This procedure will attempt to
     ## load the plugin's dynamic library, initialize the plugin, and add it to
     ## the manager's registry.
@@ -429,7 +449,7 @@ else:
     manager.loadPlugin(plugin)
     result = id
 
-  proc activate*(manager: PluginManager, id: string) =
+  proc activate*(manager: PluginManager|ptr PluginManager, id: string) =
     ## Activates a plugin by its unique identifier. This procedure will check
     ## if the plugin is loaded and then call its initialization function to
     ## make it active within the system
