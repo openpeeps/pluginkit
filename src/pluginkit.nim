@@ -475,6 +475,11 @@ else:
   # Plugin public API
   #
 
+  iterator plugins*(manager: PluginManager|ptr PluginManager): Plugin =
+    ## An iterator that yields all the currently loaded plugins in the manager.
+    for p in manager.plugins.values:
+      yield p
+
   proc getId*(plugin: Plugin): lent string =
     ## Returns the unique identifier of the plugin. This identifier is generated
     ## using a hash of the plugin's path, name, and version, ensuring that each
