@@ -7,12 +7,14 @@
 #     Made by Humans from OpenPeeps
 #     https://github.com/openpeeps/pluginkit
 
-import std/[tables, os, strutils, sequtils, macros, dynlib, strformat]
+import std/[tables, os, strutils, sequtils, options,
+      json, macros, dynlib, macrocache, strformat]
 
-import pkg/semver
+import pkg/[semver, jsony]
 import pkg/checksums/sha1
 
-import ./pluginkit/nanoid
+import ./pluginkit/[nanoid, readers]
+export `%*`, dynlib
 
 ## This module implements an advanced plugin system for Nim,
 ## allowing developers to create and manage plugins that can extend
@@ -87,35 +89,33 @@ type
       ## can be used for display purposes in a plugin manager or marketplace.
     version*: cstring
       ## The version of the plugin, following semantic versioning.
+    nimVersion*: cstring
+      ## The version of Nim required for the plugin to be compatible with the plugin system.
     permissions*: PluginPermissionMask
       ## A bitmask representing the permissions that the plugin requests. This allows
       ## for efficient storage and checking of multiple permissions for a plugin.
 
   plugin_get_manifest_fn* = proc(outManifest: ptr PluginManifest): cint {.cdecl.}
-    ## Function types for the plugin's entry points. These functions will be called
-    ## by the plugin manager when loading the plugin. The getManifest function is used
-    ## to retrieve the plugin's manifest information, while the init function is called
-    ## to initialize the plugin and perform any necessary setup.
   plugin_init_fn* = proc(): cint {.cdecl.}
-    ## Function types for the plugin's entry points. These functions will be called
-    ## by the plugin manager when loading the plugin. The getManifest function is used
-    ## to retrieve the plugin's manifest information, while the init function is called
-    ## to initialize the plugin and perform any necessary setup.
   plugin_deinit_fn* = proc() {.cdecl.}
-    ## Function types for the plugin's entry points. These functions will be called
-    ## by the plugin manager when unloading the plugin. The deinit function is called to
-    ## perform any necessary cleanup before the plugin is removed from the system.
+  plugin_event_load_fn* = proc(): cstring {.cdecl.}
+
   plugin_event_fn* = proc() {.cdecl.}
-    ## Function type for plugin event handlers, which can be called by the plugin manager
-    ## to trigger specific events in the plugin's lifecycle, such as onload, onunload, and oninit.
+
+  PluginDatabaseSchemas* = JsonNode
+    ## Custom schemas defined by the plugin for its database models
 
   Plugin* {.inheritable.} = ref object
     ## The structure representing a plugin.
     id: NanoID
       # A unique identifier for the plugin, generated using
-      # the NanoID algorithm. This identifier is used to manage
-      # the plugin within the system and ensure that
-      # each plugin can be uniquely identified and referenced.
+      # the NanoID. This ID is created at load time everytime the app
+      # starts up and is used for internal management of plugins.
+    runId*: Option[NanoID]
+      ## A persistent unique identifier for the plugin, generated using NanoID
+      ## at the time of the plugin's installation. This ID is stored in the database and
+      ## is used to track the plugin across application restarts, allowing for consistent
+      ## identification of the plugin
     `type`*: PluginType
       ## The type of the plugin, which can be used to categorize plugins
       ## and determine how they should be loaded and executed within the application.
@@ -128,6 +128,10 @@ type
       ## This is used to manage the plugin's lifecycle and determine its capabilities
       ## within the application.
     name, author, description, license, url: string
+      # Metadata about the plugin, such as its name, author, description, license, and URL.
+    schemas: string
+      # The requirements for the plugin, which can include dependencies on other plugins,
+      # required configurations, or other conditions that must be met for the plugin to function properly.
     permissions: set[PluginPermission]
       ## The set of permissions that the plugin requests. This is used to determine
       ## what actions the plugin is allowed to perform within the application.
@@ -144,7 +148,15 @@ type
     deinitFn: plugin_deinit_fn
       # The function pointer to the plugin's deinitialization function, which will be called
       # when the plugin is unloaded to perform any necessary cleanup.
-    
+    filepath: string
+      # The file path from which the plugin was loaded, used for reference
+      # and management purposes.
+    staticTemplates: TableRef[string, string]
+      # A table of static files that were bundled into the plugin at
+      # compile time using the `serializeTemplates` macro from `pluginkit/readers`
+    staticFiles: TableRef[string, string]
+      # A table of static files that were bundled into the plugin at
+      # compile time using the `embedStaticFiles` macro from `pluginkit/readers`
 
 #
 # Utilities
@@ -175,20 +187,34 @@ proc toPermissionMask*(s: set[PluginPermission]): PluginPermissionMask =
 proc toPermissionSet*(m: PluginPermissionMask): set[PluginPermission] =
   ## Converts a PluginPermissionMask bitmask back into a set of
   ## PluginPermission values for easier readability and usage in the application.
-  result = {}
   for p in PluginPermission:
     if p != permissionNoAccess and (m and PluginPermissionMask(1'u64 shl ord(p))) != 0:
       result.incl p
 
-proc cstrToString(cs: cstring): string {.inline.} =
-  if cs == nil: "" else: $cs
+proc cstrToString*(cs: cstring): string {.inline.} =
+  if cs != nil: $cs else: ""
 
 when compileOption("app", "lib"):
   #
   # The Plugin structure represents a plugin in the system, containing
   # all the necessary information about the plugin, such as its type,
   #
-  macro plugin*(id, config, init: untyped) =
+  var onLoadBlockStmt {.compileTime.}: NimNode = newStmtList()
+  var onLoadstaticTemplates {.compileTime.}: NimNode = newStmtList()
+
+  macro onUnload*(stmt: typed) =
+    result = stmt
+
+  macro onInit*(stmt: typed) =
+    result = stmt
+    for n in result:
+      case n.kind:
+      of nnkLetSection:
+        # echo n[0][2].repr
+        onLoadBlockStmt.add(n[0][2])
+      else: discard
+
+  macro plugin*(id, config: untyped, init: typed) =
     ## Macro for defining a plugin. It takes an identifier, a configuration
     ## block, and an initialization block. The configuration block is used
     ## to set up the plugin's metadata and permissions, while the initialization
@@ -229,33 +255,64 @@ when compileOption("app", "lib"):
         addPermNode(field[1])
       else:
         error("Unknown field in plugin config: " & $field[0])
-    
+
     # parse the `init` and try retrieve the `onload`, `onunload`, and `oninit` blocks from it
     expectKind(init, nnkStmtList)
-    var onloadBlock, onunloadBlock, oninitBlock: NimNode
-    for blk in init:
-      if blk[0].strVal in ["onload", "onLoad", "on_load"]:
-        onloadBlock = 
-          newProc(
-            ident"plugin_event_load",
-            body = blk[1]
+    var onloadBlock, loadStaticTemplates,
+      loadNavigation, onunloadBlock, oninitBlock: NimNode
+    if onLoadBlockStmt.len > 0:
+      onloadBlock =
+        newProc(
+          ident"plugin_event_load",
+          params = [
+            ident("cstring")
+          ],
+          body = newCall(
+            ident("cstring"),
+            onLoadBlockStmt
           )
-      elif blk[0].strVal in ["onunload", "onUnLoad", "on_unload"]:
-        onunloadBlock = 
-          newProc(
-            ident"plugin_event_unload",
-            body = blk[1]
-          )
-      elif blk[0].strVal in ["oninit", "onInit", "on_init"]:
-        oninitBlock =
-          newProc(
-            ident"plugin_event_init",
-            body = blk[1]
-          )
-      else:
-        error("Unknown block in plugin init: " & $blk[0])
+        )
+    else:
+      onloadBlock = newStmtList()
+
+    if PluginStorage.hasKey("staticTemplates"):
+      loadStaticTemplates = newProc(
+        ident"plugin_event_load_static_files",
+        params = [
+          ident("cstring"),
+        ],
+        body = newStmtList().add(ident"staticTemplates")
+      )
+    else:
+      loadStaticTemplates = newStmtList()
+
+    if PluginStorage.hasKey("navigation"):
+      loadNavigation = newProc(
+        ident"plugin_event_load_navigation",
+        params = [
+          ident("cstring"),
+        ],
+        body = newStmtList().add(ident"navigation")
+      )
+    else:
+      loadNavigation = newStmtList()
 
     result = newStmtList()
+    if PluginStorage.hasKey("staticTemplates"):
+      let staticTemplatesTable = PluginStorage["staticTemplates"]
+      add result, quote do:
+        const staticTemplates {.inject.} = toJson(toTable(`staticTemplatesTable`))
+    
+    if PluginStorage.hasKey("navigation"):
+      let navigationTable = PluginStorage["navigation"]
+      add result, quote do:
+        const navigation {.inject.} = `navigationTable`
+
+    var routeHandlers = newStmtList()
+    # var routePaths: string
+    if PluginStorage.hasKey("routeHandlers"):
+      routeHandlers = PluginStorage["routeHandlers"]
+
     add result, quote do:
       var gManifest {.inject.} = PluginManifest(
         abiVersion: PluginAbiVersion,
@@ -265,7 +322,8 @@ when compileOption("app", "lib"):
         license: cstring(`license`),
         url: cstring(`url`),
         version: cstring(`version`),
-        permissions: `permissionsExpr`
+        permissions: `permissionsExpr`,
+        nimVersion: NimVersion
       )
 
       proc NimMain {.cdecl, importc.}
@@ -275,8 +333,7 @@ when compileOption("app", "lib"):
         ## This function is called by the plugin manager to retrieve the
         ## plugin's manifest information. The plugin should fill the provided
         ## PluginManifest structure with its metadata and permissions information.
-        if outManifest.isNil:
-          return 1
+        if outManifest.isNil: return 1
         outManifest[] = gManifest
         return 0
 
@@ -288,8 +345,12 @@ when compileOption("app", "lib"):
         return 0
 
       `onloadBlock`
-      `oninitBlock`
-      `onunloadBlock`
+      `loadStaticTemplates`
+      `loadNavigation`
+      # `oninitBlock`
+      # `onunloadBlock`
+
+      `routeHandlers`
 
       proc plugin_deinit*() =
         ## Perform any necessary cleanup when the plugin is unloaded. This can include
@@ -300,6 +361,7 @@ when compileOption("app", "lib"):
     
     when defined(pluginkitDebug):
       echo result.repr
+    # echo result.repr
 else:
   #
   # API for PluginManager and Plugin structures
@@ -377,14 +439,29 @@ else:
     # Loads a plugin into the system. This procedure will add the plugin to the
     if manager.plugins.contains(plugin.id):
       raise newException(PluginManagerError, "Plugin already loaded: " & plugin.name)
-    manager.plugins[plugin.id] = plugin
-    manager.pluginIdentifiers[plugin.id] = plugin.name
     
-    let eventLoadFn = cast[plugin_event_fn](plugin.libHandle.symAddr("plugin_event_load"))
-    if eventLoadFn != nil: eventLoadFn()
+    let eventLoadFn = cast[plugin_event_load_fn](plugin.libHandle.symAddr("plugin_event_load"))
+    if eventLoadFn != nil:
+      let deps = cstrToString(eventLoadFn())
+      plugin.schemas = deps
+    
+    let eventLoadFilesFn = cast[plugin_event_load_fn](plugin.libHandle.symAddr("plugin_event_load_static_files"))
+    if eventLoadFilesFn != nil:
+      let staticTemplates = cstrToString(eventLoadFilesFn())
+      let filesTable = fromJson(staticTemplates, TableRef[string, string])
+      if filesTable.hasKey("templates"):
+        echo "Plugin " & plugin.name & " has templates: " & $filesTable["templates"]
+      
+      if filesTable.hasKey("readme.md"):
+        echo "Plugin " & plugin.name & " has readme: " & $filesTable["readme.md"]
+      
+      plugin.staticTemplates = filesTable
 
     if manager.callbacks.onLoad != nil:
       manager.callbacks.onLoad(plugin)
+
+    manager.plugins[plugin.id] = plugin
+    manager.pluginIdentifiers[plugin.id] = plugin.name
 
   proc load*(manager: PluginManager|ptr PluginManager, path: string): NanoID =
     ## Loads a plugin from the specified path. This procedure will attempt to
@@ -416,23 +493,44 @@ else:
       raise newException(PluginManagerError,
         "Plugin ABI mismatch. Expected " & $PluginAbiVersion & ", got " & $mf.abiVersion)
 
-    let versionStr = cstrToString(mf.version)
+    let versionStr = mf.version
     var parsedVersion: semver.Version
     if versionStr.len > 0:
       try:
-        parsedVersion = semver.parseVersion(versionStr)
+        parsedVersion = semver.parseVersion($versionStr)
       except CatchableError:
-        discard
-      
+        unloadLib(lib)
+        raise newException(PluginManagerError,
+          "Invalid plugin version format: " & $versionStr)
+    else:
+      unloadLib(lib)
+      raise newException(PluginManagerError, "Plugin version is required: " & path)
+    
+    let id = nanoid.generate(size = 32)
+    let pluginName = cstrToString(mf.name)
+
+    if mf.nimVersion.len > 0:
+      var parseReqNimVersion: semver.Version
+      try:
+        parseReqNimVersion = semver.parseVersion($mf.nimVersion)
+      except CatchableError:
+        unloadLib(lib)
+        raise newException(PluginManagerError, "Invalid plugin Nim version format: " & $mf.nimVersion)
+      let currentNimVersion = semver.parseVersion(NimVersion)
+      if currentNimVersion < parseReqNimVersion:
+        unloadLib(lib)
+        raise newException(PluginManagerError,
+          "Plugin `$1` requires Nim version $2 or higher. Current version $3" % [
+            pluginName, $parseReqNimVersion, $currentNimVersion
+          ])
+
     var reqPermissions = toPermissionSet(mf.permissions)
     if reqPermissions.len == 0:
       reqPermissions = {permissionNoAccess}
 
-    # let id = hashIdentifier(path & ":" & pluginName & ":" & versionStr)
-    let pluginName = cstrToString(mf.name)
-    let id = nanoid.generate(size = 32)
     let plugin = Plugin(
-      id: id,
+      # id: id,
+      id: hashIdentifier(pluginName & $versionStr),
       `type`: pluginTypeOther,
       status: pluginStatusLoaded,
       name: pluginName,
@@ -444,7 +542,8 @@ else:
       version: parsedVersion,
       libHandle: lib,
       initFn: initFn,
-      deinitFn: deinitFn
+      deinitFn: deinitFn,
+      filepath: path
     )
     manager.loadPlugin(plugin)
     result = id
@@ -468,17 +567,40 @@ else:
         manager.callbacks.onError(plugin, "plugin_init failed with code " & $rc)
       raise newException(PluginManagerError, "Failed to activate plugin: " & plugin.name)
     plugin.status = pluginStatusActive
+    
     let eventInitFn = cast[plugin_event_fn](plugin.libHandle.symAddr("plugin_event_init"))
     if eventInitFn != nil: eventInitFn()
 
   #
   # Plugin public API
   #
-
   iterator plugins*(manager: PluginManager|ptr PluginManager): Plugin =
     ## An iterator that yields all the currently loaded plugins in the manager.
     for p in manager.plugins.values:
       yield p
+
+  proc getHandle*(plugin: Plugin): LibHandle =
+    ## Returns the handle to the loaded dynamic library for the plugin. This can be used
+    ## for advanced operations such as directly calling functions from the plugin's library
+    ## or for debugging purposes.
+    plugin.libHandle
+
+  proc hasPlugin*(manager: PluginManager|ptr PluginManager, id: NanoID): bool =
+    ## Checks if a plugin with the given unique
+    ## identifier is currently loaded in the manager
+    manager.plugins.hasKey(id)
+
+  proc getPlugin*(manager: PluginManager|ptr PluginManager, id: NanoID): Plugin =
+    ## Retrieves a plugin by its unique identifier. If the plugin is not found,
+    ## an exception is raised.
+    if unlikely(not manager.plugins.hasKey(id)):
+      raise newException(PluginManagerError, "Plugin not found: " & id)
+    manager.plugins[id]
+
+  proc getStatus*(plugin: Plugin): PluginStatus =
+    ## Returns the current status of the plugin, indicating whether it is active,
+    ## loaded, unloaded, or in an invalid state.
+    plugin.status
 
   proc getId*(plugin: Plugin): lent string =
     ## Returns the unique identifier of the plugin. This identifier is generated
@@ -515,10 +637,10 @@ else:
     ## for users who want to learn more about the plugin or seek support.
     plugin.url
   
-  proc getVersion*(plugin: Plugin): semver.Version =
+  proc getVersion*(plugin: Plugin): string =
     ## Returns the version of the plugin, as specified in its manifest. This follows
     ## semantic versioning and can be used to manage plugin updates and compatibility.
-    plugin.version
+    $(plugin.version)
     
   proc getPermissions*(plugin: Plugin): set[PluginPermission] =
     ## Returns the set of permissions that the plugin requests, as specified
@@ -527,3 +649,14 @@ else:
     ## about the plugin's capabilities and potential security implications.
     plugin.permissions
 
+  proc getSchemas*(plugin: Plugin): lent string =
+    ## Returns the custom database schemas defined by the plugin, if any. This allows
+    ## the plugin to define its own database models and structures that can be used
+    ## within the application, enabling plugins to manage their own data and integrate
+    plugin.schemas
+
+  proc getFilepath*(plugin: Plugin): lent string =
+    ## Returns the file path from which the plugin was loaded. This can be used for
+    ## reference and management purposes, allowing the application to track where
+    ## each plugin is located on the filesystem.
+    plugin.filepath
