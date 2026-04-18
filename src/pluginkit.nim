@@ -1,24 +1,24 @@
 # A plugin kit for Nim, allowing developers to create and manage
-# plugins in a modular and extensible way. This kit provides a framework for
-# defining plugin metadata, handling plugin lifecycle events, and managing
-# plugin permissions.
+# plugins in a modular and extensible way. 
 #
 # (c) 2026 George Lemon | MIT License
 #     Made by Humans from OpenPeeps
 #     https://github.com/openpeeps/pluginkit
 
-import std/[tables, os, strutils, sequtils, options,
-      json, macros, dynlib, macrocache, strformat]
-
-import pkg/[semver, jsony]
-import pkg/checksums/sha1
-
-import ./pluginkit/[nanoid, readers]
-export `%*`, dynlib
-
 ## This module implements an advanced plugin system for Nim,
 ## allowing developers to create and manage plugins that can extend
 ## the functionality of their applications in a modular and scalable way.
+## 
+## Use `-d:pluginkit_debug` to enable debug output for the generated plugin code.
+
+import std/[tables, os, strutils, sequtils, options,
+              macros, dynlib, macrocache, strformat]
+
+import pkg/[semver, openparser/json]
+import pkg/checksums/sha1
+
+import ./pluginkit/[nanoid, readers]
+export `%*`, dynlib, json
 
 type
   PluginType* = enum
@@ -48,14 +48,14 @@ type
 
   PluginPermission* = enum
     ## Enumeration representing permissions that a plugin can request.
-    permissionNoAccess
-    permissionDBFullAccess
-    permissionDBReadOnly
-    permissionDBWriteOnly
-    permissionEmitEvents
-    permissionHandleRequests
-    permissionAccessConfig
-    permissionAccessSessions
+    reqNil
+    reqDBFullAccess
+    reqDBReadOnly
+    reqDBWriteOnly
+    reqEvents
+    reqRoutes
+    reqAccessConfig
+    reqAccessSessions
   
   PluginPermissionMask* = uint64
     ## A type representing a bitmask of plugin permissions, allowing for efficient
@@ -130,8 +130,9 @@ type
     name, author, description, license, url: string
       # Metadata about the plugin, such as its name, author, description, license, and URL.
     schemas: string
-      # The requirements for the plugin, which can include dependencies on other plugins,
-      # required configurations, or other conditions that must be met for the plugin to function properly.
+      # The requirements for the plugin, which can include
+      # dependencies on other plugins, required configurations,
+      # or other conditions that must be met for the plugin to function properly.
     permissions: set[PluginPermission]
       ## The set of permissions that the plugin requests. This is used to determine
       ## what actions the plugin is allowed to perform within the application.
@@ -143,17 +144,20 @@ type
       # The handle to the loaded dynamic library for the plugin, used for managing
       # the plugin's lifecycle and unloading it when necessary.
     initFn: plugin_init_fn
-      # The function pointer to the plugin's initialization function, which will be called
-      # when the plugin is loaded to perform any necessary setup.
+      # The function pointer to the plugin's initialization function,
+      # which will be called when the plugin is loaded to perform any necessary setup.
     deinitFn: plugin_deinit_fn
-      # The function pointer to the plugin's deinitialization function, which will be called
-      # when the plugin is unloaded to perform any necessary cleanup.
+      # The function pointer to the plugin's deinitialization function,
+      # which will be called when the plugin is unloaded to perform any necessary cleanup.
     filepath: string
       # The file path from which the plugin was loaded, used for reference
       # and management purposes.
     staticTemplates: TableRef[string, string]
       # A table of static files that were bundled into the plugin at
       # compile time using the `serializeTemplates` macro from `pluginkit/readers`
+    registerRoutes: JsonNode
+      # A JSON node containing the routes that were registered
+      # by the plugin using the `registerRoutes` macro
     staticFiles: TableRef[string, string]
       # A table of static files that were bundled into the plugin at
       # compile time using the `embedStaticFiles` macro from `pluginkit/readers`
@@ -163,13 +167,13 @@ type
 #
 const
   PluginAbiVersion* = 1'u32
-  permDBFullAccess*   = PluginPermissionMask(1'u64 shl ord(permissionDBFullAccess))
-  permDBReadOnly*     = PluginPermissionMask(1'u64 shl ord(permissionDBReadOnly))
-  permDBWriteOnly*    = PluginPermissionMask(1'u64 shl ord(permissionDBWriteOnly))
-  permEmitEvents*     = PluginPermissionMask(1'u64 shl ord(permissionEmitEvents))
-  permHandleRequests* = PluginPermissionMask(1'u64 shl ord(permissionHandleRequests))
-  permAccessConfig*   = PluginPermissionMask(1'u64 shl ord(permissionAccessConfig))
-  permAccessSessions* = PluginPermissionMask(1'u64 shl ord(permissionAccessSessions))
+  permDBFullAccess*   = PluginPermissionMask(1'u64 shl ord(reqDBFullAccess))
+  permDBReadOnly*     = PluginPermissionMask(1'u64 shl ord(reqDBReadOnly))
+  permDBWriteOnly*    = PluginPermissionMask(1'u64 shl ord(reqDBWriteOnly))
+  permEmitEvents*     = PluginPermissionMask(1'u64 shl ord(reqEvents))
+  permHandleRoutes* = PluginPermissionMask(1'u64 shl ord(reqRoutes))
+  permAccessConfig*   = PluginPermissionMask(1'u64 shl ord(reqAccessConfig))
+  permAccessSessions* = PluginPermissionMask(1'u64 shl ord(reqAccessSessions))
 
 proc hashIdentifier*(id: string): string =
   # Hash the plugin identifier using SHA-1 and convert
@@ -181,14 +185,14 @@ proc toPermissionMask*(s: set[PluginPermission]): PluginPermissionMask =
   ## bitmask for efficient storage and checking.
   result = 0
   for p in s:
-    if p != permissionNoAccess:
+    if p != reqNil:
       result = result or PluginPermissionMask(1'u64 shl ord(p))
 
 proc toPermissionSet*(m: PluginPermissionMask): set[PluginPermission] =
   ## Converts a PluginPermissionMask bitmask back into a set of
   ## PluginPermission values for easier readability and usage in the application.
   for p in PluginPermission:
-    if p != permissionNoAccess and (m and PluginPermissionMask(1'u64 shl ord(p))) != 0:
+    if p != reqNil and (m and PluginPermissionMask(1'u64 shl ord(p))) != 0:
       result.incl p
 
 proc cstrToString*(cs: cstring): string {.inline.} =
@@ -228,7 +232,7 @@ when compileOption("app", "lib"):
       case n.kind
       of nnkIdent, nnkSym:
         let p = parseEnum[PluginPermission](n.strVal)
-        if p != permissionNoAccess:
+        if p != reqNil:
           permissionsExpr = permissionsExpr or PluginPermissionMask(1'u64 shl ord(p))
       of nnkBracket, nnkCurly, nnkPar:
         for it in n:
@@ -259,7 +263,7 @@ when compileOption("app", "lib"):
     # parse the `init` and try retrieve the `onload`, `onunload`, and `oninit` blocks from it
     expectKind(init, nnkStmtList)
     var onloadBlock, loadStaticTemplates,
-      loadNavigation, onunloadBlock, oninitBlock: NimNode
+      loadRoutes, loadNavigation, onunloadBlock, oninitBlock: NimNode
     if onLoadBlockStmt.len > 0:
       onloadBlock =
         newProc(
@@ -275,17 +279,61 @@ when compileOption("app", "lib"):
     else:
       onloadBlock = newStmtList()
 
+    result = newStmtList()
+
+    # if plugin provides a `staticTemplates` item, generate
+    # the `plugin_event_load_static_files` function to return the static templates
     if PluginStorage.hasKey("staticTemplates"):
       loadStaticTemplates = newProc(
-        ident"plugin_event_load_static_files",
+        nnkPostfix.newTree(
+          ident("*"),
+          ident"plugin_event_load_static_files",
+        ),
         params = [
           ident("cstring"),
         ],
         body = newStmtList().add(ident"staticTemplates")
       )
+      
+      # inject static data for templates
+      let staticTemplatesTable = PluginStorage["staticTemplates"]
+      add result, quote do:
+        const staticTemplates {.inject.} = toJson(toTable(`staticTemplatesTable`))
+          # inject the static templates data into the plugin code as a constant,
+          # allowing the plugin manager to retrieve the templates when the plugin is loaded
     else:
       loadStaticTemplates = newStmtList()
 
+    if PluginStorage.hasKey("routes"):
+      # if the plugin has registered routes using the `registerRoutes` macro,
+      # we can generate the necessary code to load those routes when the plugin is loaded
+      loadRoutes = newProc(
+        nnkPostfix.newTree(
+          ident"*",
+          ident"plugin_event_load_routes",
+        ),
+        params = [
+          ident("cstring"),
+        ],
+        body = newStmtList().add(
+          newCall(
+            ident"toJson",
+            ident"routes"
+          )
+        )
+      )
+
+      let routesTable = PluginStorage["routes"]
+      add result, quote do:
+        let routes {.inject.} = fromJson(`routesTable`)
+          # inject the routes data into the plugin code as a constant,
+          # allowing the plugin manager to retrieve the routes when the plugin is loaded
+    else:
+      loadRoutes = newStmtList()
+
+    # if plugin defines a `navigation` item, generate the
+    # `plugin_event_load_navigation` function to return the
+    # navigation data to the plugin manager
     if PluginStorage.hasKey("navigation"):
       loadNavigation = newProc(
         ident"plugin_event_load_navigation",
@@ -294,24 +342,18 @@ when compileOption("app", "lib"):
         ],
         body = newStmtList().add(ident"navigation")
       )
-    else:
-      loadNavigation = newStmtList()
 
-    result = newStmtList()
-    if PluginStorage.hasKey("staticTemplates"):
-      let staticTemplatesTable = PluginStorage["staticTemplates"]
-      add result, quote do:
-        const staticTemplates {.inject.} = toJson(toTable(`staticTemplatesTable`))
-    
-    if PluginStorage.hasKey("navigation"):
+      # inject static data for navigation
       let navigationTable = PluginStorage["navigation"]
       add result, quote do:
         const navigation {.inject.} = `navigationTable`
+    else:
+      loadNavigation = newStmtList()
 
-    var routeHandlers = newStmtList()
-    # var routePaths: string
-    if PluginStorage.hasKey("routeHandlers"):
-      routeHandlers = PluginStorage["routeHandlers"]
+    # if plugin defines other handlers add them to the generated code
+    var otherHandlers = newStmtList()
+    if PluginStorage.hasKey("otherHandlers"):
+      otherHandlers = PluginStorage["otherHandlers"]
 
     add result, quote do:
       var gManifest {.inject.} = PluginManifest(
@@ -329,7 +371,7 @@ when compileOption("app", "lib"):
       proc NimMain {.cdecl, importc.}
       
       {.push exportc, cdecl, dynlib.}
-      proc plugin_get_manifest*(outManifest: ptr PluginManifest): cint =
+      proc plugin_get_manifest*(outManifest {.inject.}: ptr PluginManifest): cint =
         ## This function is called by the plugin manager to retrieve the
         ## plugin's manifest information. The plugin should fill the provided
         ## PluginManifest structure with its metadata and permissions information.
@@ -345,12 +387,11 @@ when compileOption("app", "lib"):
         return 0
 
       `onloadBlock`
+      
       `loadStaticTemplates`
+      `loadRoutes`
       `loadNavigation`
-      # `oninitBlock`
-      # `onunloadBlock`
-
-      `routeHandlers`
+      `otherHandlers`
 
       proc plugin_deinit*() =
         ## Perform any necessary cleanup when the plugin is unloaded. This can include
@@ -359,9 +400,9 @@ when compileOption("app", "lib"):
         GC_FullCollect()
       {.pop.}
     
-    when defined(pluginkitDebug):
+    when defined(pluginkit_debug):
       echo result.repr
-    # echo result.repr
+    echo result.repr
 else:
   #
   # API for PluginManager and Plugin structures
@@ -445,10 +486,11 @@ else:
       let deps = cstrToString(eventLoadFn())
       plugin.schemas = deps
     
+    # if the plugin defines a `plugin_event_load_static_files` function
     let eventLoadFilesFn = cast[plugin_event_load_fn](plugin.libHandle.symAddr("plugin_event_load_static_files"))
     if eventLoadFilesFn != nil:
       let staticTemplates = cstrToString(eventLoadFilesFn())
-      let filesTable = fromJson(staticTemplates, TableRef[string, string])
+      let filesTable = json.fromJson(staticTemplates, TableRef[string, string])
       if filesTable.hasKey("templates"):
         echo "Plugin " & plugin.name & " has templates: " & $filesTable["templates"]
       
@@ -456,6 +498,12 @@ else:
         echo "Plugin " & plugin.name & " has readme: " & $filesTable["readme.md"]
       
       plugin.staticTemplates = filesTable
+
+    # load plugin routes when the plugin defines a `plugin_event_load_routes`
+    let eventLoadRoutesFn = cast[plugin_event_load_fn](plugin.libHandle.symAddr("plugin_event_load_routes"))
+    if eventLoadRoutesFn != nil:
+      let routes = cstrToString(eventLoadRoutesFn())
+      plugin.registerRoutes = fromJson(routes, JsonNode)
 
     if manager.callbacks.onLoad != nil:
       manager.callbacks.onLoad(plugin)
@@ -526,10 +574,9 @@ else:
 
     var reqPermissions = toPermissionSet(mf.permissions)
     if reqPermissions.len == 0:
-      reqPermissions = {permissionNoAccess}
+      reqPermissions = {reqNil}
 
     let plugin = Plugin(
-      # id: id,
       id: hashIdentifier(pluginName & $versionStr),
       `type`: pluginTypeOther,
       status: pluginStatusLoaded,
@@ -569,7 +616,8 @@ else:
     plugin.status = pluginStatusActive
     
     let eventInitFn = cast[plugin_event_fn](plugin.libHandle.symAddr("plugin_event_init"))
-    if eventInitFn != nil: eventInitFn()
+    if eventInitFn != nil:
+      eventInitFn()
 
   #
   # Plugin public API
