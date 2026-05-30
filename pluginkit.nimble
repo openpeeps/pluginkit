@@ -11,5 +11,5 @@ srcDir        = "src"
 
 requires "nim >= 2.0.0"
 requires "semver >= 1.2.3"
-requires "checksums > 0.2.2"
+requires "checksums >= 0.2.2"
 requires "openparser >= 0.1.2"
