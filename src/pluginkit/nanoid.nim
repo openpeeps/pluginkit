@@ -1,7 +1,5 @@
 # A plugin kit for Nim, allowing developers to create and manage
-# plugins in a modular and extensible way. This kit provides a framework for
-# defining plugin metadata, handling plugin lifecycle events, and managing
-# plugin permissions.
+# plugins in a modular and extensible way. 
 #
 # (c) 2026 George Lemon | MIT License
 #     Made by Humans from OpenPeeps

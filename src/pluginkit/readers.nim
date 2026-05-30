@@ -1,3 +1,10 @@
+# A plugin kit for Nim, allowing developers to create and manage
+# plugins in a modular and extensible way. 
+#
+# (c) 2026 George Lemon | MIT License
+#     Made by Humans from OpenPeeps
+#     https://github.com/openpeeps/pluginkit
+
 import std/[os, strutils, macros, macrocache, json]
 
 const PluginStorage* = CacheTable"PluginKitStaticReaders"
@@ -38,6 +45,8 @@ macro embedStaticFiles*(basepath: static string, paths: static openArray[(string
         newLit(content)
       ))
     else:
+      # if the file doesn't exist, most probably is a directory, 
+      # so we will walk it recursively and embed all the files inside it as static resources
       for fpath in walkDirRec(basepath / path[1]):
         let id = fpath.replace(basepath / path[1], "")[1..^1] # remove the base path and leading slash
         tableNode.add(nnkExprColonExpr.newTree(

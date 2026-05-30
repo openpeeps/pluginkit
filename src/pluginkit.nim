@@ -152,10 +152,10 @@ type
     filepath: string
       # The file path from which the plugin was loaded, used for reference
       # and management purposes.
-    staticTemplates: TableRef[string, string]
+    staticTemplates*: TableRef[string, string]
       # A table of static files that were bundled into the plugin at
       # compile time using the `serializeTemplates` macro from `pluginkit/readers`
-    registerRoutes: JsonNode
+    registerRoutes*: JsonNode
       # A JSON node containing the routes that were registered
       # by the plugin using the `registerRoutes` macro
     staticFiles: TableRef[string, string]
@@ -210,6 +210,11 @@ when compileOption("app", "lib"):
     result = stmt
 
   macro onInit*(stmt: typed) =
+    ## The `onInit` macro is used to define the initialization block for a plugin.
+    ## This block contains the code that will be executed when the plugin is loaded,
+    ## allowing the plugin to perform any necessary setup, such as registering
+    ## routes, initializing state, or other tasks specific to the plugin's
+    ## functionality
     result = stmt
     for n in result:
       case n.kind:
@@ -420,23 +425,6 @@ else:
       onError*: proc (plugin: Plugin, error: string)
         ## Callback that is called when an error occurs during plugin loading or unloading.
 
-    PluginLoadPolicy* = object
-      ## The PluginLoadPolicy structure defines the policies and rules
-      ## for loading plugins into the system.
-      trustedDirs*: seq[string]
-        ## A sequence of trusted directories from which plugins can be loaded. This allows
-        ## the plugin manager to restrict plugin loading to specific locations on the filesystem,
-        ## enhancing security by preventing unauthorized plugins from being loaded.
-      requireSignature*: bool
-        ## A flag indicating whether plugins must be signed with a valid signature to be loaded. This adds
-        ## an additional layer of security by ensuring that only plugins from trusted sources can be loaded.
-      verifySignature*: proc(path: string): bool {.gcsafe.}
-        ## A procedure for verifying the signature of a plugin
-      allowedHashes*: Table[string, string] # absPath -> sha256/sha1 (prefer sha256)
-        ## A table mapping the absolute paths of plugins to their expected hashes
-      allowInProcess*: bool
-        ## A flag indicating whether in-process plugins are allowed.
-
     PluginManager* = ref object
       ## The PluginManager is responsible for managing the lifecycle of plugins,
       ## including loading, unloading, and executing plugins. It maintains a registry
@@ -449,9 +437,6 @@ else:
       callbacks*: PluginManagerCallbacks
         ## The callbacks registered with the PluginManager, allowing it to notify plugins
         ## of lifecycle events such as loading, unloading, and errors.
-      policy*: PluginLoadPolicy
-        ## The policy for loading plugins, which defines rules and restrictions
-        ## for plugin loading to enhance security and control over the plugin ecosystem.
 
     PluginManagerError* = object of CatchableError
 
@@ -485,25 +470,6 @@ else:
     if eventLoadFn != nil:
       let deps = cstrToString(eventLoadFn())
       plugin.schemas = deps
-    
-    # if the plugin defines a `plugin_event_load_static_files` function
-    let eventLoadFilesFn = cast[plugin_event_load_fn](plugin.libHandle.symAddr("plugin_event_load_static_files"))
-    if eventLoadFilesFn != nil:
-      let staticTemplates = cstrToString(eventLoadFilesFn())
-      let filesTable = json.fromJson(staticTemplates, TableRef[string, string])
-      if filesTable.hasKey("templates"):
-        echo "Plugin " & plugin.name & " has templates: " & $filesTable["templates"]
-      
-      if filesTable.hasKey("readme.md"):
-        echo "Plugin " & plugin.name & " has readme: " & $filesTable["readme.md"]
-      
-      plugin.staticTemplates = filesTable
-
-    # load plugin routes when the plugin defines a `plugin_event_load_routes`
-    let eventLoadRoutesFn = cast[plugin_event_load_fn](plugin.libHandle.symAddr("plugin_event_load_routes"))
-    if eventLoadRoutesFn != nil:
-      let routes = cstrToString(eventLoadRoutesFn())
-      plugin.registerRoutes = fromJson(routes, JsonNode)
 
     if manager.callbacks.onLoad != nil:
       manager.callbacks.onLoad(plugin)

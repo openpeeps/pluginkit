@@ -1,3 +1,10 @@
+# A plugin kit for Nim, allowing developers to create and manage
+# plugins in a modular and extensible way. 
+#
+# (c) 2026 George Lemon | MIT License
+#     Made by Humans from OpenPeeps
+#     https://github.com/openpeeps/pluginkit
+
 import std/[httpcore, json, macros, tables]
 import pkg/supranim/core/[request, response]
 export request, response
