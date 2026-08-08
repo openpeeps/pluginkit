@@ -78,6 +78,8 @@ for path in walkFiles("./plugins):
 - [ ] Implement plugin dependency management
 - [ ] Unit tests for plugin loading, lifecycle events, and permission checks
 - [ ] Example plugins demonstrating various features and use cases
+- [ ] Embedding Static Assets via Supra CLI
+- [ ] Plugin sandboxing and security enhancements
 
 ### ❤ Contributions & Support
 - 🐛 Found a bug? [Create a new Issue](https://github.com/openpeeps/pluginkit)

@@ -286,9 +286,9 @@ when compileOption("app", "lib"):
 
     result = newStmtList()
 
-    # if plugin provides a `staticTemplates` item, generate
-    # the `plugin_event_load_static_files` function to return the static templates
-    if PluginStorage.hasKey("staticTemplates"):
+    # if plugin provides a `staticTemplates` or `staticFiles` item, generate
+    # the `plugin_event_load_static_files` function to return the static data
+    if PluginStorage.hasKey("staticTemplates") or PluginStorage.hasKey("staticFiles"):
       loadStaticTemplates = newProc(
         nnkPostfix.newTree(
           ident("*"),
@@ -299,9 +299,17 @@ when compileOption("app", "lib"):
         ],
         body = newStmtList().add(ident"staticTemplates")
       )
-      
-      # inject static data for templates
-      let staticTemplatesTable = PluginStorage["staticTemplates"]
+
+      # inject static data for templates, including static files (readme, changelog, etc.)
+      let staticTemplatesTable =
+        if PluginStorage.hasKey("staticTemplates"): PluginStorage["staticTemplates"]
+        else: newNimNode(nnkTableConstr)
+      let staticFilesTable =
+        if PluginStorage.hasKey("staticFiles"): PluginStorage["staticFiles"]
+        else: newNimNode(nnkTableConstr)
+      if staticFilesTable.kind == nnkTableConstr and staticFilesTable.len > 0:
+        for i in 0..<staticFilesTable.len:
+          staticTemplatesTable.add(staticFilesTable[i])
       add result, quote do:
         const staticTemplates {.inject.} = toJson(toTable(`staticTemplatesTable`))
           # inject the static templates data into the plugin code as a constant,
@@ -355,10 +363,63 @@ when compileOption("app", "lib"):
     else:
       loadNavigation = newStmtList()
 
+    # if plugin defines a `settings` item, generate the
+    # `plugin_event_load_settings` function to return the
+    # settings tab data to the plugin manager
+    var loadSettings: NimNode
+    if PluginStorage.hasKey("settings"):
+      loadSettings = newProc(
+        nnkPostfix.newTree(
+          ident"*",
+          ident"plugin_event_load_settings",
+        ),
+        params = [
+          ident("cstring"),
+        ],
+        body = newStmtList().add(
+          newCall(
+            ident"toJson",
+            ident"settings"
+          )
+        )
+      )
+
+      let settingsTable = PluginStorage["settings"]
+      add result, quote do:
+        let settings {.inject.} = fromJson(`settingsTable`)
+    else:
+      loadSettings = newStmtList()
+
     # if plugin defines other handlers add them to the generated code
     var otherHandlers = newStmtList()
     if PluginStorage.hasKey("otherHandlers"):
       otherHandlers = PluginStorage["otherHandlers"]
+
+    # if a plugin registers CLI commands (via the `kapsis` `commands` DSL),
+    # we generate the `plugin_event_load_commands` entrypoint that returns the
+    # command manifest to the host, and re-emit the command runners the DSL built
+    var loadCommands: NimNode
+    var commandRunners: NimNode
+    if PluginStorage.hasKey("commands"):
+      loadCommands = newProc(
+        nnkPostfix.newTree(
+          ident"*",
+          ident"plugin_event_load_commands",
+        ),
+        params = [
+          ident("cstring"),
+        ],
+        body = newStmtList().add(
+          newCall(ident"cstring", PluginStorage["commands"])
+        )
+      )
+      if PluginStorage.hasKey("commandRunners"):
+        commandRunners = PluginStorage["commandRunners"]
+      else:
+        commandRunners = newStmtList()
+    else:
+      loadCommands = newStmtList()
+      commandRunners = newStmtList()
 
     add result, quote do:
       var gManifest {.inject.} = PluginManifest(
@@ -396,7 +457,10 @@ when compileOption("app", "lib"):
       `loadStaticTemplates`
       `loadRoutes`
       `loadNavigation`
+      `loadSettings`
+      `loadCommands`
       `otherHandlers`
+      `commandRunners`
 
       proc plugin_deinit*() =
         ## Perform any necessary cleanup when the plugin is unloaded. This can include
@@ -520,7 +584,6 @@ else:
       unloadLib(lib)
       raise newException(PluginManagerError, "Plugin version is required: " & path)
     
-    let id = nanoid.generate(size = 32)
     let pluginName = cstrToString(mf.name)
 
     if mf.nimVersion.len > 0:
@@ -559,7 +622,7 @@ else:
       filepath: path
     )
     manager.loadPlugin(plugin)
-    result = id
+    result = plugin.id
 
   proc activate*(manager: PluginManager|ptr PluginManager, id: string) =
     ## Activates a plugin by its unique identifier. This procedure will check
@@ -656,6 +719,10 @@ else:
     ## semantic versioning and can be used to manage plugin updates and compatibility.
     $(plugin.version)
     
+  proc getNimVersion*(plugin: Plugin): string =
+    ## Returns the Nim version required by the plugin, as specified in its manifest.
+    $plugin.manifest.nimVersion
+
   proc getPermissions*(plugin: Plugin): set[PluginPermission] =
     ## Returns the set of permissions that the plugin requests, as specified
     ## in its manifest. This can be used to determine what actions the plugin
@@ -674,3 +741,19 @@ else:
     ## reference and management purposes, allowing the application to track where
     ## each plugin is located on the filesystem.
     plugin.filepath
+
+type
+  PluginCommandLoadFn* = proc(): cstring {.cdecl.}
+
+proc getCommands*(plugin: Plugin): Option[JsonNode] =
+    ## Resolves the `plugin_event_load_commands` entrypoint exported by a plugin
+    ## and returns its CLI command manifest as a `JsonNode` array, or `none(JsonNode)`
+    ## when the plugin does not expose any commands. This is used by hosts (e.g. kapsis)
+    ## to discover subcommands that a shared library contributes at runtime.
+    let fn = cast[PluginCommandLoadFn](
+      plugin.libHandle.symAddr("plugin_event_load_commands"))
+    if fn != nil:
+      let raw = cstrToString(fn())
+      if raw.len > 0:
+        return some(parseJson(raw))
+    none(JsonNode)
