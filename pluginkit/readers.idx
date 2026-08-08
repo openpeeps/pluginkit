@@ -1,0 +1,5 @@
+nimTitle	readers	pluginkit/readers.html	module pluginkit/readers		0
+nim	PluginStorage	pluginkit/readers.html#PluginStorage	const PluginStorage		10
+nim	registerTemplates	pluginkit/readers.html#registerTemplates.m,staticstring,staticstring	macro registerTemplates(basepath, path: static string)		13
+nim	register	pluginkit/readers.html#register.m,untyped,staticJsonNode	macro register(key: untyped; config: static JsonNode)		26
+nim	embedStaticFiles	pluginkit/readers.html#embedStaticFiles.m,staticstring,staticopenArray[]	macro embedStaticFiles(basepath: static string;\n                 paths: static openArray[(string, string)])		35

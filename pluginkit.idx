@@ -1,0 +1,69 @@
+nimTitle	pluginkit	pluginkit.html	module pluginkit		0
+nim	pluginTypeAuthentication	pluginkit.html#pluginTypeAuthentication	PluginType.pluginTypeAuthentication		24
+nim	pluginTypeDatabase	pluginkit.html#pluginTypeDatabase	PluginType.pluginTypeDatabase		24
+nim	pluginTypeAnalytics	pluginkit.html#pluginTypeAnalytics	PluginType.pluginTypeAnalytics		24
+nim	pluginTypePayment	pluginkit.html#pluginTypePayment	PluginType.pluginTypePayment		24
+nim	pluginTypeNotification	pluginkit.html#pluginTypeNotification	PluginType.pluginTypeNotification		24
+nim	pluginTypeOther	pluginkit.html#pluginTypeOther	PluginType.pluginTypeOther		24
+nim	PluginType	pluginkit.html#PluginType	enum PluginType		24
+nim	pluginStatusUnload	pluginkit.html#pluginStatusUnload	PluginStatus.pluginStatusUnload		33
+nim	pluginStatusLoaded	pluginkit.html#pluginStatusLoaded	PluginStatus.pluginStatusLoaded		33
+nim	pluginStatusActive	pluginkit.html#pluginStatusActive	PluginStatus.pluginStatusActive		33
+nim	pluginStatusInvalid	pluginkit.html#pluginStatusInvalid	PluginStatus.pluginStatusInvalid		33
+nim	PluginStatus	pluginkit.html#PluginStatus	enum PluginStatus		33
+nim	reqNil	pluginkit.html#reqNil	PluginPermission.reqNil		49
+nim	reqDBFullAccess	pluginkit.html#reqDBFullAccess	PluginPermission.reqDBFullAccess		49
+nim	reqDBReadOnly	pluginkit.html#reqDBReadOnly	PluginPermission.reqDBReadOnly		49
+nim	reqDBWriteOnly	pluginkit.html#reqDBWriteOnly	PluginPermission.reqDBWriteOnly		49
+nim	reqEvents	pluginkit.html#reqEvents	PluginPermission.reqEvents		49
+nim	reqRoutes	pluginkit.html#reqRoutes	PluginPermission.reqRoutes		49
+nim	reqAccessConfig	pluginkit.html#reqAccessConfig	PluginPermission.reqAccessConfig		49
+nim	reqAccessSessions	pluginkit.html#reqAccessSessions	PluginPermission.reqAccessSessions		49
+nim	PluginPermission	pluginkit.html#PluginPermission	enum PluginPermission		49
+nim	PluginPermissionMask	pluginkit.html#PluginPermissionMask	type PluginPermissionMask		60
+nim	PluginSystemVersion	pluginkit.html#PluginSystemVersion	object PluginSystemVersion		64
+nim	NanoID	pluginkit.html#NanoID	type NanoID		73
+nim	PluginManifest	pluginkit.html#PluginManifest	object PluginManifest		77
+nim	plugin_get_manifest_fn	pluginkit.html#plugin_get_manifest_fn	type plugin_get_manifest_fn		98
+nim	plugin_init_fn	pluginkit.html#plugin_init_fn	type plugin_init_fn		99
+nim	plugin_deinit_fn	pluginkit.html#plugin_deinit_fn	type plugin_deinit_fn		100
+nim	plugin_event_load_fn	pluginkit.html#plugin_event_load_fn	type plugin_event_load_fn		101
+nim	plugin_event_fn	pluginkit.html#plugin_event_fn	type plugin_event_fn		103
+nim	PluginDatabaseSchemas	pluginkit.html#PluginDatabaseSchemas	type PluginDatabaseSchemas		105
+nim	Plugin	pluginkit.html#Plugin	type Plugin		108
+nim	PluginAbiVersion	pluginkit.html#PluginAbiVersion	const PluginAbiVersion		169
+nim	permDBFullAccess	pluginkit.html#permDBFullAccess	const permDBFullAccess		170
+nim	permDBReadOnly	pluginkit.html#permDBReadOnly	const permDBReadOnly		171
+nim	permDBWriteOnly	pluginkit.html#permDBWriteOnly	const permDBWriteOnly		172
+nim	permEmitEvents	pluginkit.html#permEmitEvents	const permEmitEvents		173
+nim	permHandleRoutes	pluginkit.html#permHandleRoutes	const permHandleRoutes		174
+nim	permAccessConfig	pluginkit.html#permAccessConfig	const permAccessConfig		175
+nim	permAccessSessions	pluginkit.html#permAccessSessions	const permAccessSessions		176
+nim	hashIdentifier	pluginkit.html#hashIdentifier,string	proc hashIdentifier(id: string): string		178
+nim	toPermissionMask	pluginkit.html#toPermissionMask,set[PluginPermission]	proc toPermissionMask(s: set[PluginPermission]): PluginPermissionMask		183
+nim	toPermissionSet	pluginkit.html#toPermissionSet,PluginPermissionMask	proc toPermissionSet(m: PluginPermissionMask): set[PluginPermission]		191
+nim	cstrToString	pluginkit.html#cstrToString,cstring	proc cstrToString(cs: cstring): string		198
+nim	PluginManagerCallbacks	pluginkit.html#PluginManagerCallbacks	object PluginManagerCallbacks		480
+nim	PluginManager	pluginkit.html#PluginManager	type PluginManager		492
+nim	PluginManagerError	pluginkit.html#PluginManagerError	object PluginManagerError		505
+nim	unload	pluginkit.html#unload,,string	proc unload(manager: PluginManager | ptr PluginManager; id: string)		507
+nim	load	pluginkit.html#load,,string	proc load(manager: PluginManager | ptr PluginManager; path: string): NanoID		544
+nim	activate	pluginkit.html#activate,,string	proc activate(manager: PluginManager | ptr PluginManager; id: string)		627
+nim	plugins	pluginkit.html#plugins.i	iterator plugins(manager: PluginManager | ptr PluginManager): Plugin		654
+nim	getHandle	pluginkit.html#getHandle,Plugin	proc getHandle(plugin: Plugin): LibHandle		659
+nim	hasPlugin	pluginkit.html#hasPlugin,,NanoID	proc hasPlugin(manager: PluginManager | ptr PluginManager; id: NanoID): bool		665
+nim	getPlugin	pluginkit.html#getPlugin,,NanoID	proc getPlugin(manager: PluginManager | ptr PluginManager; id: NanoID): Plugin		670
+nim	getStatus	pluginkit.html#getStatus,Plugin	proc getStatus(plugin: Plugin): PluginStatus		677
+nim	getId	pluginkit.html#getId,Plugin	proc getId(plugin: Plugin): lent string		682
+nim	getName	pluginkit.html#getName,Plugin	proc getName(plugin: Plugin): lent string		688
+nim	getAuthor	pluginkit.html#getAuthor,Plugin	proc getAuthor(plugin: Plugin): lent string		693
+nim	getDescription	pluginkit.html#getDescription,Plugin	proc getDescription(plugin: Plugin): lent string		699
+nim	getLicense	pluginkit.html#getLicense,Plugin	proc getLicense(plugin: Plugin): lent string		705
+nim	getURL	pluginkit.html#getURL,Plugin	proc getURL(plugin: Plugin): lent string		711
+nim	getVersion	pluginkit.html#getVersion,Plugin	proc getVersion(plugin: Plugin): string		717
+nim	getNimVersion	pluginkit.html#getNimVersion,Plugin	proc getNimVersion(plugin: Plugin): string		722
+nim	getPermissions	pluginkit.html#getPermissions,Plugin	proc getPermissions(plugin: Plugin): set[PluginPermission]		726
+nim	getSchemas	pluginkit.html#getSchemas,Plugin	proc getSchemas(plugin: Plugin): lent string		733
+nim	getFilepath	pluginkit.html#getFilepath,Plugin	proc getFilepath(plugin: Plugin): lent string		739
+nim	PluginCommandLoadFn	pluginkit.html#PluginCommandLoadFn	type PluginCommandLoadFn		746
+nim	getCommands	pluginkit.html#getCommands,Plugin	proc getCommands(plugin: Plugin): Option[JsonNode]		748

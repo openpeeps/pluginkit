@@ -1,0 +1,3 @@
+nimTitle	nanoid	pluginkit/nanoid.html	module pluginkit/nanoid		0
+nim	defaultAlphabet	pluginkit/nanoid.html#defaultAlphabet	const defaultAlphabet		19
+nim	generate	pluginkit/nanoid.html#generate,string,int	proc generate(alphabet: string = defaultAlphabet; size: int = 21): string		21
