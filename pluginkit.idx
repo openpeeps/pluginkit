@@ -43,27 +43,25 @@ nim	hashIdentifier	pluginkit.html#hashIdentifier,string	proc hashIdentifier(id: 
 nim	toPermissionMask	pluginkit.html#toPermissionMask,set[PluginPermission]	proc toPermissionMask(s: set[PluginPermission]): PluginPermissionMask		183
 nim	toPermissionSet	pluginkit.html#toPermissionSet,PluginPermissionMask	proc toPermissionSet(m: PluginPermissionMask): set[PluginPermission]		191
 nim	cstrToString	pluginkit.html#cstrToString,cstring	proc cstrToString(cs: cstring): string		198
-nim	PluginManagerCallbacks	pluginkit.html#PluginManagerCallbacks	object PluginManagerCallbacks		480
-nim	PluginManager	pluginkit.html#PluginManager	type PluginManager		492
-nim	PluginManagerError	pluginkit.html#PluginManagerError	object PluginManagerError		505
-nim	unload	pluginkit.html#unload,,string	proc unload(manager: PluginManager | ptr PluginManager; id: string)		507
-nim	load	pluginkit.html#load,,string	proc load(manager: PluginManager | ptr PluginManager; path: string): NanoID		544
-nim	activate	pluginkit.html#activate,,string	proc activate(manager: PluginManager | ptr PluginManager; id: string)		627
-nim	plugins	pluginkit.html#plugins.i	iterator plugins(manager: PluginManager | ptr PluginManager): Plugin		654
-nim	getHandle	pluginkit.html#getHandle,Plugin	proc getHandle(plugin: Plugin): LibHandle		659
-nim	hasPlugin	pluginkit.html#hasPlugin,,NanoID	proc hasPlugin(manager: PluginManager | ptr PluginManager; id: NanoID): bool		665
-nim	getPlugin	pluginkit.html#getPlugin,,NanoID	proc getPlugin(manager: PluginManager | ptr PluginManager; id: NanoID): Plugin		670
-nim	getStatus	pluginkit.html#getStatus,Plugin	proc getStatus(plugin: Plugin): PluginStatus		677
-nim	getId	pluginkit.html#getId,Plugin	proc getId(plugin: Plugin): lent string		682
-nim	getName	pluginkit.html#getName,Plugin	proc getName(plugin: Plugin): lent string		688
-nim	getAuthor	pluginkit.html#getAuthor,Plugin	proc getAuthor(plugin: Plugin): lent string		693
-nim	getDescription	pluginkit.html#getDescription,Plugin	proc getDescription(plugin: Plugin): lent string		699
-nim	getLicense	pluginkit.html#getLicense,Plugin	proc getLicense(plugin: Plugin): lent string		705
-nim	getURL	pluginkit.html#getURL,Plugin	proc getURL(plugin: Plugin): lent string		711
-nim	getVersion	pluginkit.html#getVersion,Plugin	proc getVersion(plugin: Plugin): string		717
-nim	getNimVersion	pluginkit.html#getNimVersion,Plugin	proc getNimVersion(plugin: Plugin): string		722
-nim	getPermissions	pluginkit.html#getPermissions,Plugin	proc getPermissions(plugin: Plugin): set[PluginPermission]		726
-nim	getSchemas	pluginkit.html#getSchemas,Plugin	proc getSchemas(plugin: Plugin): lent string		733
-nim	getFilepath	pluginkit.html#getFilepath,Plugin	proc getFilepath(plugin: Plugin): lent string		739
-nim	PluginCommandLoadFn	pluginkit.html#PluginCommandLoadFn	type PluginCommandLoadFn		746
-nim	getCommands	pluginkit.html#getCommands,Plugin	proc getCommands(plugin: Plugin): Option[JsonNode]		748
+nim	PluginManagerCallbacks	pluginkit.html#PluginManagerCallbacks	object PluginManagerCallbacks		451
+nim	PluginManager	pluginkit.html#PluginManager	type PluginManager		463
+nim	PluginManagerError	pluginkit.html#PluginManagerError	object PluginManagerError		476
+nim	unload	pluginkit.html#unload,,string	proc unload(manager: PluginManager | ptr PluginManager; id: string)		478
+nim	load	pluginkit.html#load,,string	proc load(manager: PluginManager | ptr PluginManager; path: string): NanoID		515
+nim	activate	pluginkit.html#activate,,string	proc activate(manager: PluginManager | ptr PluginManager; id: string)		598
+nim	plugins	pluginkit.html#plugins.i	iterator plugins(manager: PluginManager | ptr PluginManager): Plugin		625
+nim	getHandle	pluginkit.html#getHandle,Plugin	proc getHandle(plugin: Plugin): LibHandle		630
+nim	hasPlugin	pluginkit.html#hasPlugin,,NanoID	proc hasPlugin(manager: PluginManager | ptr PluginManager; id: NanoID): bool		636
+nim	getPlugin	pluginkit.html#getPlugin,,NanoID	proc getPlugin(manager: PluginManager | ptr PluginManager; id: NanoID): Plugin		641
+nim	getStatus	pluginkit.html#getStatus,Plugin	proc getStatus(plugin: Plugin): PluginStatus		648
+nim	getId	pluginkit.html#getId,Plugin	proc getId(plugin: Plugin): lent string		653
+nim	getName	pluginkit.html#getName,Plugin	proc getName(plugin: Plugin): lent string		659
+nim	getAuthor	pluginkit.html#getAuthor,Plugin	proc getAuthor(plugin: Plugin): lent string		664
+nim	getDescription	pluginkit.html#getDescription,Plugin	proc getDescription(plugin: Plugin): lent string		670
+nim	getLicense	pluginkit.html#getLicense,Plugin	proc getLicense(plugin: Plugin): lent string		676
+nim	getURL	pluginkit.html#getURL,Plugin	proc getURL(plugin: Plugin): lent string		682
+nim	getVersion	pluginkit.html#getVersion,Plugin	proc getVersion(plugin: Plugin): string		688
+nim	getNimVersion	pluginkit.html#getNimVersion,Plugin	proc getNimVersion(plugin: Plugin): string		693
+nim	getPermissions	pluginkit.html#getPermissions,Plugin	proc getPermissions(plugin: Plugin): set[PluginPermission]		697
+nim	getSchemas	pluginkit.html#getSchemas,Plugin	proc getSchemas(plugin: Plugin): lent string		704
+nim	getFilepath	pluginkit.html#getFilepath,Plugin	proc getFilepath(plugin: Plugin): lent string		710

@@ -74,7 +74,6 @@
 <li><a class="reference" href="#plugin_event_load_fn" title="plugin_event_load_fn = proc (): cstring {.cdecl.}">plugin_event_load_fn</a></li>
 <li><a class="reference" href="#plugin_get_manifest_fn" title="plugin_get_manifest_fn = proc (outManifest: ptr PluginManifest): cint {.cdecl.}">plugin_get_manifest_fn</a></li>
 <li><a class="reference" href="#plugin_init_fn" title="plugin_init_fn = proc (): cint {.cdecl.}">plugin_init_fn</a></li>
-<li><a class="reference" href="#PluginCommandLoadFn" title="PluginCommandLoadFn = proc (): cstring {.cdecl.}">PluginCommandLoadFn</a></li>
 <li><a class="reference" href="#PluginDatabaseSchemas" title="PluginDatabaseSchemas = JsonNode">PluginDatabaseSchemas</a></li>
 <li><a class="reference" href="#PluginManager" title="PluginManager = ref object
   callbacks*: PluginManagerCallbacks ## The callbacks registered with the PluginManager, allowing it to notify plugins
@@ -141,10 +140,6 @@
 </ul>
 <ul class="simple nested-toc-section">getAuthor
   <li><a class="reference" href="#getAuthor%2CPlugin" title="getAuthor(plugin: Plugin): lent string">getAuthor(plugin: Plugin): lent string</a></li>
-
-</ul>
-<ul class="simple nested-toc-section">getCommands
-  <li><a class="reference" href="#getCommands%2CPlugin" title="getCommands(plugin: Plugin): Option[JsonNode]">getCommands(plugin: Plugin): Option[JsonNode]</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">getDescription
@@ -315,14 +310,6 @@
 </div>
 <div id="plugin_init_fn">
   <dt><pre><a href="#plugin_init_fn"><span class="Identifier">plugin_init_fn</span></a> <span class="Other">=</span> <span class="Keyword">proc</span> <span class="Other">(</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">cint</span> {.<span class="Identifier">cdecl</span>.}</pre></dt>
-  <dd>
-    
-    
-    
-  </dd>
-</div>
-<div id="PluginCommandLoadFn">
-  <dt><pre><a href="#PluginCommandLoadFn"><span class="Identifier">PluginCommandLoadFn</span></a> <span class="Other">=</span> <span class="Keyword">proc</span> <span class="Other">(</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">cstring</span> {.<span class="Identifier">cdecl</span>.}</pre></dt>
   <dd>
     
     
@@ -536,19 +523,6 @@
   <dd>
     
     
-    
-  </dd>
-</div>
-
-</div>
-<div id="getCommands-procs-all">
-  <div id="getCommands,Plugin">
-  <dt><pre><span class="Keyword">proc</span> <a href="#getCommands%2CPlugin"><span class="Identifier">getCommands</span></a><span class="Other">(</span><span class="Identifier">plugin</span><span class="Other">:</span> <a href="#Plugin"><span class="Identifier">Plugin</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Option</span><span class="Other">[</span><span class="Identifier">JsonNode</span><span class="Other">]</span> {.
-    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">JsonParsingError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span>
-    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
-  <dd>
-    
-    Resolves the <tt class="docutils literal"><span class="pre"><span class="Identifier">plugin_event_load_commands</span></span></tt> entrypoint exported by a plugin and returns its CLI command manifest as a <tt class="docutils literal"><span class="pre"><span class="Identifier">JsonNode</span></span></tt> array, or <tt class="docutils literal"><span class="pre"><span class="Identifier">none</span><span class="Punctuation">(</span><span class="Identifier">JsonNode</span><span class="Punctuation">)</span></span></tt> when the plugin does not expose any commands. This is used by hosts (e.g. kapsis) to discover subcommands that a shared library contributes at runtime.
     
   </dd>
 </div>
@@ -795,7 +769,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-08 23:48:47 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-22 01:59:26 UTC</small>
       </div>
     </div>
   </div>
