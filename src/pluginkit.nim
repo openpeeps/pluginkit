@@ -395,32 +395,6 @@ when compileOption("app", "lib"):
     if PluginStorage.hasKey("otherHandlers"):
       otherHandlers = PluginStorage["otherHandlers"]
 
-    # if a plugin registers CLI commands (via the `kapsis` `commands` DSL),
-    # we generate the `plugin_event_load_commands` entrypoint that returns the
-    # command manifest to the host, and re-emit the command runners the DSL built
-    var loadCommands: NimNode
-    var commandRunners: NimNode
-    if PluginStorage.hasKey("commands"):
-      loadCommands = newProc(
-        nnkPostfix.newTree(
-          ident"*",
-          ident"plugin_event_load_commands",
-        ),
-        params = [
-          ident("cstring"),
-        ],
-        body = newStmtList().add(
-          newCall(ident"cstring", PluginStorage["commands"])
-        )
-      )
-      if PluginStorage.hasKey("commandRunners"):
-        commandRunners = PluginStorage["commandRunners"]
-      else:
-        commandRunners = newStmtList()
-    else:
-      loadCommands = newStmtList()
-      commandRunners = newStmtList()
-
     add result, quote do:
       var gManifest {.inject.} = PluginManifest(
         abiVersion: PluginAbiVersion,
@@ -458,9 +432,7 @@ when compileOption("app", "lib"):
       `loadRoutes`
       `loadNavigation`
       `loadSettings`
-      `loadCommands`
       `otherHandlers`
-      `commandRunners`
 
       proc plugin_deinit*() =
         ## Perform any necessary cleanup when the plugin is unloaded. This can include
@@ -471,7 +443,6 @@ when compileOption("app", "lib"):
     
     when defined(pluginkit_debug):
       echo result.repr
-    echo result.repr
 else:
   #
   # API for PluginManager and Plugin structures
@@ -741,19 +712,3 @@ else:
     ## reference and management purposes, allowing the application to track where
     ## each plugin is located on the filesystem.
     plugin.filepath
-
-type
-  PluginCommandLoadFn* = proc(): cstring {.cdecl.}
-
-proc getCommands*(plugin: Plugin): Option[JsonNode] =
-    ## Resolves the `plugin_event_load_commands` entrypoint exported by a plugin
-    ## and returns its CLI command manifest as a `JsonNode` array, or `none(JsonNode)`
-    ## when the plugin does not expose any commands. This is used by hosts (e.g. kapsis)
-    ## to discover subcommands that a shared library contributes at runtime.
-    let fn = cast[PluginCommandLoadFn](
-      plugin.libHandle.symAddr("plugin_event_load_commands"))
-    if fn != nil:
-      let raw = cstrToString(fn())
-      if raw.len > 0:
-        return some(parseJson(raw))
-    none(JsonNode)
